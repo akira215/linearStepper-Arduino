@@ -47,7 +47,7 @@ The process for motorX will be:
    as long as you didn't change mechanical ratio and microstepping setup (for
    microstepping setup, you can recompute ratio on the fly).
  - As we have now a correct ratio, speed is automatically corrected, and a timer
-   is set up to measeure the ellapsed time of the travel. Theoretical & measured
+   is set up to measure the ellapsed time of the travel. Theoretical & measured
    time is displayed to check if everything is fine.
  - For demonstration purpose, the motor will then shift to the middle position,
    displaying its theoretical and measured position.
@@ -148,9 +148,15 @@ void setup()
   Serial.println();
   delay(2000);
 
+/**********************************************************/
+// The three following lines should be adjusted according to
+// explanations at the beginning of the file
+/**********************************************************/
   motorX.setMaxPosition(385);             // Place the measured distance in mm here
   motorX.setRatioStepPerMm(5.83376646f);  // If this ratio is changed, change first Speed set accordingly
   motorX.setSpeed(200);                   // Max speed is 235 mm/s
+/**********************************************************/
+
   motorX.setAccelerationDistance(0);      // No Acceleration
   motorX.setAutoCorrect(false);           // autoCorrect is set to false for calibration purpose
 
