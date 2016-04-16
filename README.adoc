@@ -1,0 +1,62 @@
+= linearStepper Library for Arduino =
+
+ This library implement all the required operation to drive stepper motor acting
+ on linear device, via a dedicated hardware (chipstet A4988 or similar).
+ The hardware should trigger one step on the rising edge (low to high level) of
+ the step pin.
+ In addition, two limit switches should be provided at each end of the device.
+ Limit switches should be connected on the normally close (NC) position,
+ i.e. when it is pushed, the circuit is open.
+ All the operations are interrupt driven in this library, so functions never
+ block and you don't have to provide any run() function in your main loop.
+ This has been done to run perfect timing when driving the motor.
+ Multi instance (i.e. many motors), are supported, it could be increase using 
+ the MAX_INSTANCES macro. You don't have to decrease it, even you drive less
+ motor than the current value : the implementation of the class is done so that
+ only the memory is allocated only for the motor you are using in your code.
+ Take care when running many instance on low speed µC that is could drive to
+ continuously interrupt the main loop (no remaining time for other operations)
+ Timing & speed are very important for stepper operations.
+ Please take a look at the wiki page of the library if you have to tweak timings.
+ Limitations:
+  - PCINT : the library use pin change interrupt for limit switches.
+    As we don't know which pins are used, all the vectors have been redirected
+    to the same IRQ function. This could lead to overloaded vectors, which is
+    illegal for µC. If you plan to use pin change interrupt in your code or
+    another library, please carefully consider on which pin you place your limit
+    switches and redirect only the required PCINT vector (in linearStepper.cpp).
+    SoftSerial lib use the same way, you may have to tweak it if you want to run
+    both library in the same program.
+  - No microstepping for now. If your are driving at a fixed micro stepping rate,
+    there is no issues. If you need to change the micro stepping rate during the
+    execution, you will have to update the ratio Step per mm in your code,
+    the library doesn't do it for you.
+  - Non constant acceleration rate : the library has been written to optimize
+    execution timing. To avoid heavy square root calculation, acceleration
+    computation has been simplified, with a non constant acceleration rate.
+    The main goal of the acceleration is to avoid missing steps, regardless of
+    constant acceleration rate. Note that target position include breaking phase,
+     so if you plan a small shift with a long acceleration distance, the motor
+     will never reach its programmed speed (i.e. it will accelerate and
+     decelerate to reach the target position).
+
+For more information about this library please visit us at
+https://github.com/akira215/linearStepper-Arduino.git
+
+== License ==
+
+Copyright (c) Akira. All right reserved.
+
+This library is free software; you can redistribute it and/or
+modify it under the terms of the GNU Lesser General Public
+License as published by the Free Software Foundation; either
+version 2.1 of the License, or (at your option) any later version.
+
+This library is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public
+License along with this library; if not, write to the Free Software
+Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA

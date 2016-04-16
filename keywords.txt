@@ -1,0 +1,38 @@
+#######################################
+# Syntax Coloring Map For Keyboard
+#######################################
+
+#######################################
+# Datatypes (KEYWORD1)
+#######################################
+
+linearStepper		KEYWORD1
+
+#######################################
+# Methods and Functions (KEYWORD2)
+#######################################
+
+getNumOfInstances	KEYWORD2
+setAutoCorrect		KEYWORD2
+setMaxPosition		KEYWORD2
+setPosition		KEYWORD2
+setRatioStepPerMm	KEYWORD2
+setSpeed		KEYWORD2
+setAccelerationDistance	KEYWORD2
+gotoPosition		KEYWORD2
+move			KEYWORD2
+stop			KEYWORD2
+isMoving		KEYWORD2
+getPosition		KEYWORD2
+getMaxPosition		KEYWORD2
+getCurrentStep		KEYWORD2
+getSpeed		KEYWORD2
+getAccelerationDistance	KEYWORD2
+
+#######################################
+# Constants (LITERAL1)
+#######################################
+
+MAX_INSTANCES		LITERAL1
+DEBUG			LITERAL1
+MAX_POS			LITERAL1
