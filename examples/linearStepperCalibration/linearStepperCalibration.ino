@@ -46,9 +46,14 @@ The process for motorX will be:
    steps. Once done, this ratio could be directly used in your futures program,
    as long as you didn't change mechanical ratio and microstepping setup (for
    microstepping setup, you can recompute ratio on the fly).
- - As we have now a correct ratio, speed is automatically corrected, and a timer
-   is set up to measure the ellapsed time of the travel. Theoretical & measured
-   time is displayed to check if everything is fine.
+ - As we have now a correct ratio, speed is automatically corrected, but position
+   is not well known because the setAutoCorrect() method is called after the
+   stopper has been triggered. We could do a setPosition(maxPosition), but for
+   demonstration purpose, we will go back to the aft and check that speed is
+   correct.
+ - The motor will go back to the aft (0 position). A timer is set up to measure
+   the ellapsed time of the travel. Theoretical & measured time is displayed to
+   check if everything is fine.
  - For demonstration purpose, the motor will then shift to the middle position,
    displaying its theoretical and measured position.
  - It will then shift 100mm to the aft.
@@ -182,13 +187,9 @@ void loop()
   Serial.println();
   delay(750);
 
-  unsigned long timeBefore, timeAfter;
-
-  timeBefore = millis();
   motorX.gotoPosition(MAX_POS);
 
   while(motorX.isMoving());
-  timeAfter = millis();
 
   int32_t maxStep = motorX.getCurrentStep();
   uint32_t middlePosition =  ROUNDED_INT((float) maxPosition / 2.0f);
@@ -201,6 +202,18 @@ void loop()
 
   motorX.setAutoCorrect();    // autoCorrection enable
   motorX.setRatioStepPerMm(ratioStepPerMm);
+  delay(750);
+
+  Serial.println("Goto min position (0 mm)"); Serial.println();
+
+  unsigned long timeBefore, timeAfter;
+
+  timeBefore = millis();
+  motorX.gotoPosition(0);
+  while(motorX.isMoving());
+  // The device is correctly initialized here (ratio &  position)
+  timeAfter = millis();
+
 
   uint8_t speed = motorX.getSpeed();
 
