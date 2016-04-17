@@ -23,6 +23,8 @@ gotoPosition		KEYWORD2
 move			KEYWORD2
 stop			KEYWORD2
 isMoving		KEYWORD2
+isForeLStriggered	KEYWORD2
+isAftLStriggered	KEYWORD2
 getPosition		KEYWORD2
 getMaxPosition		KEYWORD2
 getCurrentStep		KEYWORD2

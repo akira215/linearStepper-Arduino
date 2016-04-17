@@ -147,7 +147,10 @@ public:
   void move(const int16_t offset); // Offset (mm) is relative to actual position (fore = positive, aft = negative)
   void stop(bool smooth = false);
 
-  bool isMoving() const { return (_currentDir !=0); }
+  bool isMoving()           const  { return (_currentDir !=0); }
+  bool isForeLStriggered()  const  { return *_forePortRegister & _foreBitMask; }
+  bool isAftLStriggered()   const  { return *_aftPortRegister & _aftBitMask; }
+
   uint16_t  getPosition() const;
   uint16_t  getMaxPosition() const;
   int32_t   getCurrentStep() const;   // Only for information, it is not required
