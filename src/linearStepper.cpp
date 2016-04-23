@@ -405,8 +405,13 @@ void linearStepper::gotoPosition(const uint16_t position)
       _currentTarget =  ROUNDED_INT((float)(targerStep - _currentStep) / 2.0f);
     }
     else
-      _currentTarget = targerStep - (_acceleration - 1); // Once the target is reached,
-                                                         // the brake will put us where we want
+    {
+      if(targerStep == MIN_STEP)
+        _currentTarget = MIN_STEP;
+      else
+        _currentTarget = targerStep - (_acceleration - 1); // Once the target is reached,
+                                                           // the brake will put us where we want
+    }
   }
   else
     _currentTarget = targerStep ;
