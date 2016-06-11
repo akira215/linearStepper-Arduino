@@ -72,7 +72,6 @@ License along with this library; if not, write to the Free Software
 Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 */
 
-
 #ifndef linearStepper_h
 #define linearStepper_h
 
@@ -81,7 +80,14 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
 #define MAX_POS         UINT16_MAX
 
-#include <inttypes.h>
+#include <Arduino.h>
+
+// Define a data type to avoid 32bit calculation when using 8bit AVR
+#if defined(__SAM3X8E__)
+  typedef RwReg RegData;
+#else  // AVR code
+  typedef   uint8_t  RegData;
+#endif // defined(__SAM3X8E__)
 
 class linearStepper
 {
@@ -92,19 +98,19 @@ private:
 
   // Limit switches operations
   uint8_t _forePin;         // We keep it only for destruction !
-  uint8_t _foreBitMask;
-  volatile uint8_t *_forePortRegister;
+  RegData _foreBitMask;
+  volatile RegData *_forePortRegister;
   uint8_t _aftPin;
-  uint8_t _aftBitMask;
-  volatile uint8_t *_aftPortRegister;
+  RegData _aftBitMask;
+  volatile RegData *_aftPortRegister;
   bool _autoCorrect;
 
   // Motor pins
   uint8_t _dirPin;          // As dir pin is not used during move, std Arduino cmd are used
-  uint8_t _stepBitMask;
-  volatile uint8_t *_stepPortRegister;
-  uint8_t _dirBitMask;
-  volatile uint8_t *_dirPortRegister;
+  RegData _stepBitMask;
+  volatile RegData *_stepPortRegister;
+  RegData _dirBitMask;
+  volatile RegData *_dirPortRegister;
 
   // Moving operation
   volatile uint16_t _counter;      // This couter is used during ISR to count the number of trigger ISR
@@ -122,6 +128,12 @@ private:
   volatile int32_t _maxStep;     // min position is always 0
   float _stepPerMm;              // store the ratio step per millimeter
 
+  // Private Methods
+  void setupInterruptOnPinChange(const uint8_t pin);
+  void setupTimer();
+  #if defined(__SAM3X8E__)
+  void startTimer(Tc *tc, uint32_t channel, IRQn_Type irq, uint32_t frequency);
+  #endif // defined(__SAM3X8E__)
 protected:
   void inline limitSwitch_isr() __attribute__((__always_inline__));
   void inline timer_isr() __attribute__((__always_inline__));

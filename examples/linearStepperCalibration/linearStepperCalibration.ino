@@ -31,6 +31,9 @@ The software process is as following :
    will be wrong at the get-go, as the ratio step / mm is wrong. The motor could
    block while emitting noise with a too great value. If the value is too small,
    the motor will move with a lots of vibrations.
+ - The code is written for AVR Arduino board running at full steps, and for SAMX
+   Arduino board running at Eighth steps. If you plan to use different divider,
+   just change the setRatioStepPerMm initial value.
 Once theses few steps done, you can upload the code in your Arduino board and
 follow the instruction on the screen (actually it doesn't require any user
 input).
@@ -125,7 +128,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
 // Hardware configuration
 #define ForeStopperPinY  12 // Fore = motor side
-#define AftStopperPinY   13 // Aft = pulley side ! Caution built-in led
+#define AftStopperPinY   3 // Aft = pulley side ! Caution pin 13 is built-in led
 
 #define dirPinY           7 // Motor Y dir pin
 #define stepPinY          6 // Motor Y step pin
@@ -133,9 +136,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 // Macro to round when casting float to int
 #define ROUNDED_INT(f) ((int32_t)(f >= 0.0f ? (f + 0.5f) : (f - 0.5f)))
 
-linearStepper motorX(stepPinX, dirPinX, ForeStopperPinX, AftStopperPinX);
-linearStepper motorY(stepPinY, dirPinY, ForeStopperPinY, AftStopperPinY);
-
+// linearStepper motorX(stepPinX, dirPinX, ForeStopperPinX, AftStopperPinX);
+//linearStepper motorY(stepPinY, dirPinY, ForeStopperPinY, AftStopperPinY);
+linearStepper* motorX;
+linearStepper* motorY;
 
 void setup()
 {
@@ -143,6 +147,9 @@ void setup()
   Serial.begin(115200);
   while (!Serial); // wait for serial port to connect. Needed for native USB port only
 
+
+  motorY = new linearStepper(stepPinY, dirPinY, ForeStopperPinY, AftStopperPinY);
+motorX = new linearStepper(stepPinX, dirPinX, ForeStopperPinX, AftStopperPinX);
 
   Serial.println("linearStepper calibration procedure");
   Serial.println("This procedure should be run only if the mechanical ratio");
@@ -153,45 +160,58 @@ void setup()
   Serial.println();
   delay(2000);
 
+
+
 /**********************************************************/
 // The three following lines should be adjusted according to
 // explanations at the beginning of the file
 /**********************************************************/
-  motorX.setMaxPosition(385);             // Place the measured distance in mm here
-  motorX.setRatioStepPerMm(5.83376646f);  // If this ratio is changed, change first Speed set accordingly
-  motorX.setSpeed(200);                   // Max speed is 235 mm/s
+
+  motorX->setMaxPosition(385);             // Place the measured distance in mm here
+#if defined(__SAM3X8E__)
+  motorX->setRatioStepPerMm(45.0f);  // If this ratio is changed, change first Speed set accordingly
+#else
+  motorX->setRatioStepPerMm(5.83376646f);  // If this ratio is changed, change first Speed set accordingly
+#endif // defined(__SAM3X8E__)
+  motorX->setSpeed(200);                   // Max speed is 235 mm/s
+
 /**********************************************************/
 
-  motorX.setAccelerationDistance(0);      // No Acceleration
-  motorX.setAutoCorrect(false);           // autoCorrect is set to false for calibration purpose
+  motorX->setAccelerationDistance(0);      // No Acceleration
+  motorX->setAutoCorrect(false);           // autoCorrect is set to false for calibration purpose
 
-  motorY.setPosition(0);                  // The current position will be considered as 0.
+
+  motorY->setPosition(0);                  // The current position will be considered as 0.
                                           // It will be overide once the aft limit switch will be trigger
-  motorY.setMaxPosition(1000);            // Place the measured distance in mm here
-  motorY.setRatioStepPerMm(5.83376646f);  // If this ratio is changed, change first Speed set accordingly
-  motorY.setSpeed(205);                   // Max speed is 235 mm/s
-  motorY.setAccelerationDistance(50);     // Acceleration distance is 20 mm
+  motorY->setMaxPosition(1000);            // Place the measured distance in mm here
+  #if defined(__SAM3X8E__)
+    motorY->setRatioStepPerMm(45.0f);  // If this ratio is changed, change first Speed set accordingly
+  #else
+    motorY->setRatioStepPerMm(5.83376646f);  // If this ratio is changed, change first Speed set accordingly
+  #endif // defined(__SAM3X8E__)
+  motorY->setSpeed(200);                   // Max speed is 235 mm/s
+  motorY->setAccelerationDistance(50);     // Acceleration distance is 20 mm
 
 }
 
 void loop()
 {
-  motorY.gotoPosition(MAX_POS);    // Motor Y will start to move
+  motorY->gotoPosition(MAX_POS);    // Motor Y will start to move
 
-  motorX.gotoPosition(0);
-  while(motorX.isMoving());
+  motorX->gotoPosition(0);
+  while(motorX->isMoving());
 
-  Serial.print("Position 0 mm - step : ");Serial.println(motorX.getCurrentStep());
-  uint32_t maxPosition = motorX.getMaxPosition();
+  Serial.print("Position 0 mm - step : ");Serial.println(motorX->getCurrentStep());
+  uint32_t maxPosition = motorX->getMaxPosition();
   Serial.print("Goto max position  (");Serial.print(maxPosition);Serial.println(" mm)");
   Serial.println();
   delay(750);
 
-  motorX.gotoPosition(MAX_POS);
+  motorX->gotoPosition(MAX_POS);
 
-  while(motorX.isMoving());
+  while(motorX->isMoving());
 
-  int32_t maxStep = motorX.getCurrentStep();
+  int32_t maxStep = motorX->getCurrentStep();
   uint32_t middlePosition =  ROUNDED_INT((float) maxPosition / 2.0f);
   float ratioStepPerMm = (float) maxStep / (float) maxPosition;
 
@@ -200,8 +220,8 @@ void loop()
   Serial.print("Ratio will be set to ");Serial.print(ratioStepPerMm,8);Serial.println(" steps / mm");
   Serial.println();
 
-  motorX.setAutoCorrect();    // autoCorrection enable
-  motorX.setRatioStepPerMm(ratioStepPerMm);
+  motorX->setAutoCorrect();    // autoCorrection enable
+  motorX->setRatioStepPerMm(ratioStepPerMm);
   delay(750);
 
   Serial.println("Goto min position (0 mm)"); Serial.println();
@@ -209,13 +229,12 @@ void loop()
   unsigned long timeBefore, timeAfter;
 
   timeBefore = millis();
-  motorX.gotoPosition(0);
-  while(motorX.isMoving());
+  motorX->gotoPosition(0);
+  while(motorX->isMoving());
   // The device is correctly initialized here (ratio &  position)
   timeAfter = millis();
 
-
-  uint8_t speed = motorX.getSpeed();
+  uint8_t speed = motorX->getSpeed();
 
   Serial.print("Speed is ");Serial.print(speed);Serial.println(" mm/s");
   Serial.print("Theoretical time to run ");Serial.print(maxPosition);
@@ -227,17 +246,17 @@ void loop()
 
   Serial.print("Goto middle position  (");Serial.print(middlePosition);Serial.println(" mm)");
   Serial.println();
-  motorX.gotoPosition(middlePosition);
+  motorX->gotoPosition(middlePosition);
 
-  while(motorX.isMoving());
-  Serial.print("Position ");Serial.print(motorX.getPosition());
-  Serial.print(" mm - step : ");Serial.println(motorX.getCurrentStep());
+  while(motorX->isMoving());
+  Serial.print("Position ");Serial.print(motorX->getPosition());
+  Serial.print(" mm - step : ");Serial.println(motorX->getCurrentStep());
   delay(750);
 
   Serial.println("Shift to the aft - 100mm");
   Serial.println();
-  motorX.move(-100);  // Motor should move to 100mm
-  while(motorX.isMoving());
+  motorX->move(-100);  // Motor should move to 100mm
+  while(motorX->isMoving());
   delay(750);
 
   // To run this, DEBUG 1 should be enable, then uncomment the following lines
@@ -252,20 +271,20 @@ void loop()
 
 
   Serial.print("Return to middle position  (");Serial.print(middlePosition);Serial.println(" mm) with acceleration");
-  motorX.setAccelerationDistance(14);      // 14mm Acceleration
-  motorX.gotoPosition(middlePosition);
+  motorX->setAccelerationDistance(14);      // 14mm Acceleration
+  motorX->gotoPosition(middlePosition);
 
-  while(motorX.isMoving());
-  Serial.print("Position ");Serial.print(motorX.getPosition());
-  Serial.print(" mm - step : ");Serial.println(motorX.getCurrentStep());
+  while(motorX->isMoving());
+  Serial.print("Position ");Serial.print(motorX->getPosition());
+  Serial.print(" mm - step : ");Serial.println(motorX->getCurrentStep());
   Serial.println();
 
   Serial.println("Displaying braking of MotorY : ");
-  while(motorY.isMoving())
+  while(motorY->isMoving())
   {
-    Serial.print("MotorY Pos : ");Serial.println(motorY.getPosition());
+    Serial.print("MotorY Pos : ");Serial.println(motorY->getPosition());
     delay(100);
-    motorY.stop(true);    // MotorY will stop using the acceleration set up with motorY.setAccelerationDistance(50);
+    motorY->stop(true);    // MotorY will stop using the acceleration set up with motorY.setAccelerationDistance(50);
   }
   Serial.println();
 

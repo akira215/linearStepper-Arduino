@@ -85,9 +85,15 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
 #define MAX_STEP        INT32_MAX
 #define MIN_STEP        INT32_MIN
-#define TICK_INTERRUPT  104.0f// Interrupt is fired every 104µs
-                              // depend of µC freq, prescaler & OCR2A register
-                              // Could be checked using DEBUG 1 macro
+#if defined(__SAM3X8E__)
+	#define TICK_INTERRUPT  25.0f	// Interrupt is fired every 25µs
+                              	// depend of µC freq,
+#else
+	#define TICK_INTERRUPT  104.0f// Interrupt is fired every 104µs
+                              	// depend of µC freq, prescaler & OCR2A register
+                              	// Could be checked using DEBUG 1 macro
+#endif // defined(__SAM3X8E__)
+
 // Macro to round when casting float to int
 #define ROUNDED_INT(f) ((int32_t)(f >= 0.0f ? (f + 0.5f) : (f - 0.5f)))
 
@@ -103,6 +109,33 @@ uint8_t linearStepper::_nbInstances = 0;
 // If required, comment the unused lines to allow other libs to access to the
 // commented vector (pins should obviously not be connected to the commented
 // register)
+#if defined(__SAM3X8E__)
+
+void PIOA_Handler(void) {
+	uint32_t isr __attribute__((unused));
+  isr= PIOA->PIO_ISR;
+  linearStepper::handle_PCINT_isr();
+}
+
+void PIOB_Handler(void) {
+  uint32_t isr __attribute__((unused));
+	isr = PIOB->PIO_ISR;
+	linearStepper::handle_PCINT_isr();
+}
+
+void PIOC_Handler(void) {
+  uint32_t isr __attribute__((unused));
+	isr = PIOC->PIO_ISR;
+	linearStepper::handle_PCINT_isr();
+}
+
+void PIOD_Handler(void) {
+  uint32_t isr __attribute__((unused));
+	isr = PIOD->PIO_ISR;
+  linearStepper::handle_PCINT_isr();
+}
+#endif // defined(__SAM3X8E__)
+
 #if defined(PCINT0_vect)
 ISR(PCINT0_vect)
 {  linearStepper::handle_PCINT_isr(); }
@@ -121,14 +154,22 @@ ISR(PCINT3_vect, ISR_ALIASOF(PCINT0_vect));
 #endif
 
 // Interrupt service routine that call the static interrupt handler in the class
-ISR(TIMER2_COMPA_vect)
-{  linearStepper::handle_Timer_isr(); }
+#if defined(__SAM3X8E__)
+	void TC3_Handler(){
+	  TC_GetStatus(TC1, 0);
+	  linearStepper::handle_Timer_isr();
+	}
+#else
+	ISR(TIMER2_COMPA_vect)
+	{  linearStepper::handle_Timer_isr(); }
+#endif // defined(__SAM3X8E__)
 
 // Static interrupt handler. It only call the private interrupt handler
 // of each instance
+
 void linearStepper::handle_PCINT_isr()
 {
-  for(uint8_t i=0;i<_nbInstances;i++)
+	for(uint8_t i=0;i<_nbInstances;i++)
     _instance[i]->limitSwitch_isr();
 }
 
@@ -158,7 +199,7 @@ _acceleration(0), _brake(false), _maxStep(100), _stepPerMm(1)
   _instance[_nbInstances] = this;
   _nbInstances++;
 
-  cli();          // disable all interrupts
+  noInterrupts();          // disable all interrupts
 
   // Limit Switch initalization : they will drive pin change interrupts
   // stopper should be grounded, NC connected to Arduino
@@ -170,37 +211,15 @@ _acceleration(0), _brake(false), _maxStep(100), _stepPerMm(1)
 
   // Precalculate the read register and value, so it
   // can be used inside the ISR without costing too much time.
-  if (digitalPinToPCICR(foreLSPin))
-  {
-    pinMode(foreLSPin, INPUT_PULLUP);    // stopper should be grounded, NC connected to Arduino
+	setupInterruptOnPinChange(foreLSPin);
+  _forePortRegister = portInputRegister(digitalPinToPort(foreLSPin));        // setup the port of fore pin
+  _foreBitMask = digitalPinToBitMask(foreLSPin);                             // determine the bit for the fore pin in the port
 
-    *digitalPinToPCICR(foreLSPin) |= _BV(digitalPinToPCICRbit(foreLSPin));    // enable interrupt for the whole port
-    *digitalPinToPCMSK(foreLSPin) |=_BV(digitalPinToPCMSKbit(foreLSPin));     // enable interrupt for the correct bit in the port
+  setupInterruptOnPinChange(aftLSPin);
+  _aftPortRegister = portInputRegister(digitalPinToPort(aftLSPin));    // setup the port of fore pin
+  _aftBitMask = digitalPinToBitMask(aftLSPin);                         // determine the bit for the fore pin in the
 
-    _forePortRegister = portInputRegister(digitalPinToPort(foreLSPin));        // setup the port of fore pin
-    _foreBitMask = digitalPinToBitMask(foreLSPin);                             // determine the bit for the fore pin in the port
-  }
-  if (digitalPinToPCICR(aftLSPin))
-  {
-    pinMode(aftLSPin, INPUT_PULLUP);     // switch is pushed => pin HIGH
-
-    *digitalPinToPCICR(aftLSPin) |= _BV(digitalPinToPCICRbit(aftLSPin)); // enable interrupt for the whole port
-    *digitalPinToPCMSK(aftLSPin) |= _BV(digitalPinToPCMSKbit(aftLSPin)); // enable interrupt for the correct bit in the port
-
-    _aftPortRegister = portInputRegister(digitalPinToPort(aftLSPin));    // setup the port of fore pin
-    _aftBitMask = digitalPinToBitMask(aftLSPin);                         // determine the bit for the fore pin in the
-  }
-
-  // Using Timer2 as it has the best interrupt priority
-  TCCR2A = 0;
-  TCCR2B = 0;
-
-  OCR2A = 13;
-  //TCCR2A |= (1 << WGM21);   // Set to CTC Mode
-  TCCR2B |= (1 << WGM22); // Set to CTC Mode (datasheet error !)
-  TCCR2B |= (1 << CS22); // set up timer with prescaler = 64
-  TIMSK2 |= (1 << OCIE2A); //Set interrupt on compare match channel A
-
+	setupTimer();
 
   // Precalculate the write register and value, so it
   // can be used inside the ISR without costing too much time.
@@ -213,7 +232,7 @@ _acceleration(0), _brake(false), _maxStep(100), _stepPerMm(1)
   pinMode(_dirPin, OUTPUT);    // use Arduino function since no timing required
   digitalWrite(_dirPin, LOW);
 
-  sei(); // enable all interrupts
+  interrupts(); // enable all interrupts
 
 }
 
@@ -222,9 +241,13 @@ _acceleration(0), _brake(false), _maxStep(100), _stepPerMm(1)
 linearStepper::~linearStepper()
 {
   // Remove the interrupts flags, don't disable port interrupt as other may required it
+#if defined(__SAM3X8E__)
+	g_APinDescription[_forePin].pPort->PIO_IDR = g_APinDescription[_forePin].ulPin;
+	g_APinDescription[_aftPin].pPort->PIO_IDR = g_APinDescription[_forePin].ulPin;
+#else // AVR code
   *digitalPinToPCMSK(_forePin) &= ~_BV(digitalPinToPCMSKbit(_forePin));
   *digitalPinToPCMSK(_aftPin) &= ~_BV(digitalPinToPCMSKbit(_aftPin));
-
+#endif // defined(__SAM3X8E__)
   // remove the pointer from the static array and shift the array
   uint8_t n = 0;
   for(uint8_t i=0;i<_nbInstances;i++)
@@ -236,46 +259,164 @@ linearStepper::~linearStepper()
   _nbInstances--;
 }
 
+/**************************************************************
+ *  Private setup methods
+**************************************************************/
 
+void linearStepper::setupInterruptOnPinChange(const uint8_t pin)
+{
+	  pinMode(pin, INPUT_PULLUP);    // stopper should be grounded, NC connected to Arduino
+
+#if defined(__SAM3X8E__)
+  //Enable or disable write protect of PMC registers.
+  pmc_set_writeprotect(false);
+
+  Pio *pio = g_APinDescription[pin].pPort;
+	uint32_t mask = g_APinDescription[pin].ulPin;
+  IRQn irq;
+
+  // //Enable the specified peripheral clock & configure irq
+  if (pio == PIOA)
+  {
+    pmc_enable_periph_clk(ID_PIOA);
+    irq = PIOA_IRQn;
+  }
+  if (pio == PIOB)
+  {
+    pmc_enable_periph_clk(ID_PIOB);
+    irq = PIOB_IRQn;
+  }
+  if (pio == PIOC)
+  {
+    pmc_enable_periph_clk(ID_PIOC);
+    irq = PIOC_IRQn;
+  }
+  if (pio == PIOD)
+  {
+    pmc_enable_periph_clk(ID_PIOD);
+    irq = PIOD_IRQn;
+  }
+  // Configure the interrupt mode
+  // Disable additional interrupt mode (detects both rising and falling edges)
+  // mode = change
+  pio->PIO_AIMDR = mask;
+  // Enable interrupt
+	pio->PIO_IER = mask;
+
+  NVIC_SetPriority(irq, (uint32_t) irq);  // Priority is defined by irq to avoid complex tests
+  NVIC_EnableIRQ(irq);
+#else // AVR Code
+	*digitalPinToPCICR(pin) |= _BV(digitalPinToPCICRbit(pin));    // enable interrupt for the whole port
+	*digitalPinToPCMSK(pin) |=_BV(digitalPinToPCMSKbit(pin));     // enable interrupt for the correct bit in the port
+#endif // defined(__SAM3X8E__)
+}
+
+void linearStepper::setupTimer()
+{
+#if defined(__SAM3X8E__)
+		// For ARM porcessor, send an interrupt every 25µs (40kHz)
+		int FREQ_Hz = 40000;
+		startTimer(TC1, 0, TC3_IRQn, FREQ_Hz);
+#else // AVR code
+		// For AVR porcessor, send an interrupt every 104µs (10kHz)
+		// Using Timer2 as it has the best interrupt priority
+		TCCR2A = 0;
+		TCCR2B = 0;
+
+		OCR2A = 13;
+		//TCCR2A |= (1 << WGM21);   // Set to CTC Mode
+		TCCR2B |= (1 << WGM22); // Set to CTC Mode (datasheet error !)
+		TCCR2B |= (1 << CS22); // set up timer with prescaler = 64
+		TIMSK2 |= (1 << OCIE2A); //Set interrupt on compare match channel A
+#endif // defined(__SAM3X8E__)
+}
+
+#if defined(__SAM3X8E__)
+void linearStepper::startTimer(Tc *tc, uint32_t channel, IRQn_Type irq, uint32_t frequency)
+{
+    //Enable or disable write protect of PMC registers.
+    pmc_set_writeprotect(false);
+    //Enable the specified peripheral clock.
+    pmc_enable_periph_clk((uint32_t)irq);
+
+    //TC_Configure(tc, channel, TC_CMR_WAVE|TC_CMR_WAVSEL_UP_RC|TC_CMR_TCCLKS_TIMER_CLOCK2);
+    tc->TC_CHANNEL[channel].TC_CMR = TC_CMR_WAVE  | TC_CMR_WAVSEL_UP_RC | TC_CMR_TCCLKS_TIMER_CLOCK2;
+
+    // Setup values in counting registers
+    uint32_t rc = VARIANT_MCK/8/frequency;
+    tc->TC_CHANNEL[channel].TC_RA = rc/2; //TC_SetRA(tc, channel, rc/2);
+    tc->TC_CHANNEL[channel].TC_RC = rc; //TC_SetRC(tc, channel, rc);
+
+    // Software trigger & Start timer
+    tc->TC_CHANNEL[channel].TC_CCR = TC_CCR_CLKEN  | TC_CCR_SWTRG ;   //TC_Start(tc, channel);
+
+    // Position the interrupt we need
+    tc->TC_CHANNEL[channel].TC_IER = TC_IER_CPCS;  // Enable RC compare interrupt
+    tc->TC_CHANNEL[channel].TC_IDR = ~TC_IER_CPCS; // disable other interrupts
+
+    // Finally start the interrupt
+    NVIC_SetPriority(irq, 32);
+    NVIC_EnableIRQ(irq);
+}
+#endif // defined(__SAM3X8E__)
 /**************************************************************
  *  Linear operations
 **************************************************************/
 // Convert the physical positon to steps for the motor
 void linearStepper::setMaxPosition(const uint16_t maxPosition)
 {
+#ifndef __SAM3X8E__
   uint8_t oldSREG = SREG;
-  cli();
+	cli();
+#endif
+
   _maxStep = ROUNDED_INT( (float) maxPosition * _stepPerMm );
+#ifndef __SAM3X8E__
   SREG = oldSREG;
+#endif
 }
 
 // This method is used to initialize a position of the device. Motor will not move
 void linearStepper::setPosition(const uint16_t position)
 {
-  uint8_t oldSREG = SREG;
-  cli();
+#ifndef __SAM3X8E__
+	uint8_t oldSREG = SREG;
+	cli();
+#endif
+
   _currentStep = ROUNDED_INT( (float) position * _stepPerMm );
+#ifndef __SAM3X8E__
   SREG = oldSREG;
+#endif
 }
 
 uint16_t  linearStepper::getMaxPosition() const
 {
+#ifndef __SAM3X8E__
   uint8_t oldSREG = SREG;
+	cli();
+#endif
+
   // create a local variable to avoid interrupt issues
-  cli();
   uint16_t maxPosition = ROUNDED_INT( (float) _maxStep / _stepPerMm );
+#ifndef __SAM3X8E__
   SREG = oldSREG;
+#endif
   return maxPosition;
 }
 
 uint16_t linearStepper::getPosition() const
 {
+#ifndef __SAM3X8E__
   uint8_t oldSREG = SREG;
+	cli();
+#endif
   // create a local variable to avoid interrupt issues
-  cli();
   uint16_t position = ROUNDED_INT( (float) _currentStep / _stepPerMm );
 
-  SREG = oldSREG;
+#ifndef __SAM3X8E__
+	SREG = oldSREG;
+#endif
   return position;
 }
 // This function automatically recompute the required values. It return false
@@ -284,8 +425,11 @@ bool linearStepper::setRatioStepPerMm(const float stepPerMm)
 {
   if(stepPerMm)
   {
-    uint8_t oldSREG = SREG;
-    cli(); // Disable interrupts
+	#ifndef __SAM3X8E__
+		uint8_t oldSREG = SREG;
+		cli();
+	#endif
+
     // Backup required values which use _stepPerMm
     uint16_t maxPosition = getMaxPosition();
     uint16_t position = getPosition();
@@ -299,7 +443,9 @@ bool linearStepper::setRatioStepPerMm(const float stepPerMm)
     setSpeed(speed);                // We need to recompute speed
     setAccelerationDistance(accel); // We need to recompute speed
 
-    SREG = oldSREG;
+	#ifndef __SAM3X8E__
+	  SREG = oldSREG;
+	#endif
     return true;
   }
 
@@ -308,18 +454,24 @@ bool linearStepper::setRatioStepPerMm(const float stepPerMm)
 
 int32_t linearStepper::getCurrentStep() const
 {
-  uint8_t oldSREG = SREG;
+#ifndef __SAM3X8E__
+	uint8_t oldSREG = SREG;
+	cli();
+#endif
   // create a local variable to avoid interrupt issues
-  cli();
   int32_t currentStep = _currentStep;
-  SREG = oldSREG;
+#ifndef __SAM3X8E__
+	SREG = oldSREG;
+#endif
   return currentStep;
 }
 
 void linearStepper::setSpeed(const uint8_t speed) // speed in mm/s
 {
-  uint8_t oldSREG = SREG;
-  cli();      //Disable interrupts
+#ifndef __SAM3X8E__
+	uint8_t oldSREG = SREG;
+	cli();
+#endif
 
   if (speed > 0)
   {
@@ -337,14 +489,18 @@ void linearStepper::setSpeed(const uint8_t speed) // speed in mm/s
   else
     _speed = UINT8_MAX;
 
-  SREG = oldSREG;
+#ifndef __SAM3X8E__
+	SREG = oldSREG;
+#endif
 }
 // To avoid long root computing, acceleration is simplified as non const
 // acceleration. Give the distance (mm) of the acceleration instead.
 void linearStepper::setAccelerationDistance(const uint8_t distOfAccel)
 {
-  uint8_t oldSREG = SREG;
-  cli();      //Disable interrupts
+#ifndef __SAM3X8E__
+	uint8_t oldSREG = SREG;
+	cli();      //Disable interrupts
+#endif
 
   // Compute _speed. +0.5f is added to round the value when casting
   float fAcceleration =  ( distOfAccel * _stepPerMm )  + 0.5f;
@@ -356,16 +512,23 @@ void linearStepper::setAccelerationDistance(const uint8_t distOfAccel)
   else
     _acceleration = (uint8_t) fAcceleration + 1;
 
-  SREG = oldSREG;
+#ifndef __SAM3X8E__
+	SREG = oldSREG;
+#endif
 }
 
 uint8_t linearStepper::getAccelerationDistance() const
 {
-  uint8_t oldSREG = SREG;
-  cli();      //Disable interrupts
+#ifndef __SAM3X8E__
+	uint8_t oldSREG = SREG;
+	cli();      //Disable interrupts
+#endif
+
 
   uint8_t acceleration = ROUNDED_INT( (float) _acceleration / _stepPerMm );
-  SREG = oldSREG;
+#ifndef __SAM3X8E__
+	SREG = oldSREG;
+#endif
 
   return acceleration;
 }
@@ -373,20 +536,27 @@ uint8_t linearStepper::getAccelerationDistance() const
 
 uint8_t linearStepper::getSpeed() const
 {
-  uint8_t oldSREG = SREG;
-  cli();      //Disable interrupts
+#ifndef __SAM3X8E__
+	uint8_t oldSREG = SREG;
+	cli();
+#endif
+
   uint8_t speed = (uint8_t) ( (1000000.0f / ( TICK_INTERRUPT *
                           _stepPerMm * (float) _speed )) + 0.5f);
 
+#ifndef __SAM3X8E__
   SREG = oldSREG;
+#endif
   return speed;
 }
 //The only function to start the motor
 void linearStepper::gotoPosition(const uint16_t position)
 {
   _currentDir = 0; // stop the motor to avoid going over during computation
+#ifndef __SAM3X8E__
   uint8_t oldSREG = SREG;
-  cli();
+	cli();
+#endif
 
   int32_t targerStep = ROUNDED_INT( (float) position * _stepPerMm );
 
@@ -421,7 +591,9 @@ void linearStepper::gotoPosition(const uint16_t position)
     if(*_aftPortRegister & _aftBitMask)
     {
       _currentStep = 0; // we are at the aft position !
-      SREG = oldSREG;
+		#ifndef __SAM3X8E__
+		  SREG = oldSREG;
+		#endif
       return;
     }
     _counter = 1; // the motor will start immedialely !
@@ -435,7 +607,9 @@ void linearStepper::gotoPosition(const uint16_t position)
     {
       if(_autoCorrect)
         _currentStep = _maxStep; // we are at the fore position !
-      SREG = oldSREG;
+			#ifndef __SAM3X8E__
+			  SREG = oldSREG;
+			#endif
       return;
     }
     _counter = 1; // the motor will start immedialely !
@@ -444,14 +618,18 @@ void linearStepper::gotoPosition(const uint16_t position)
     _currentDir = 1;    // this will start the motor to move
   }
   // if _currentStep = targetStep there is nothing to do
+#ifndef __SAM3X8E__
   SREG = oldSREG;
+#endif
 }
 
 void linearStepper::move(const int16_t offset)
 {
   _currentDir = 0; // stop the motor to avoid going over during computation
+#ifndef __SAM3X8E__
   uint8_t oldSREG = SREG;
-  cli();
+	cli();
+#endif
 
   int32_t targetPos = getPosition() + offset;
   if (targetPos > MAX_POS)
@@ -460,7 +638,9 @@ void linearStepper::move(const int16_t offset)
     targetPos = 0;
 
   gotoPosition(targetPos);
+#ifndef __SAM3X8E__
   SREG = oldSREG;
+#endif
 }
 // default value for smooth is false. If the motor is running at a high speed,
 // it could lead to missing steps.
@@ -563,13 +743,16 @@ void linearStepper::limitSwitch_isr()
 
   unsigned long linearStepper::getDeltaTime()
   {
-    uint8_t oldSREG = SREG;
+		#ifndef (__SAM3X8E__)
+		  uint8_t oldSREG = SREG;
+			cli();
+		#endif
     // disable interrupts while we read timer0_millis or we might get an
     // inconsistent value (e.g. in the middle of a write to timer0_millis)
-    cli();
     unsigned long result = currentTime - previousTime;
-
-    SREG = oldSREG;
+		#ifndef (__SAM3X8E__)
+    	SREG = oldSREG;
+		#endif
     return result;
   }
 #endif // DEBUG
